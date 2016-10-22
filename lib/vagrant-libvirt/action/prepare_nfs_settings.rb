@@ -41,8 +41,14 @@ module VagrantPlugins
         # @return [String]
         def read_host_ip(ip)
           UDPSocket.open do |s|
-            if ip.is_a?(Array)
-              s.connect(ip.last, 1)
+            if(ip.kind_of?(Array))
+              ip.reverse_each do |x|
+                if x =~ /^docker/ then
+                  next
+                end
+                s.connect(x, 1)
+                break
+              end
             else
               s.connect(ip, 1)
             end
@@ -60,7 +66,11 @@ module VagrantPlugins
           return ssh_host if ping(ssh_host)
 
           # check other ips
-          command = "ip=$(which ip); ${ip:-/sbin/ip} addr show | grep -i 'inet ' | grep -v '127.0.0.1' | tr -s ' ' | cut -d' ' -f3 | cut -d'/' -f 1"
+          command = %q!ip=$(which ip); ${ip:-/sbin/ip} link show!
+          command+= %q{ | sed -n 's/^[0-9]\\+:\\s*\\([^: ]\\+\\).*/\\1/p'}
+          command+= %q{ | egrep -v '^(lo|docker[0-9]+)$' | xargs -n 1 ip addr show}
+          command+= %q{ | grep -i 'inet ' | grep -v '127.0.0.1' | tr -s ' '}
+          command+= %q{ | cut -d' ' -f3 | cut -d'/' -f 1}
           result  = ''
           machine.communicate.execute(command) do |type, data|
             result << data if type == :stdout
